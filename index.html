@@ -1,27 +1,686 @@
-<!--
-  🚧 Under construction — OpenCode (MiniMax-M3) 가 다음 프롬프트로 작업할 예정:
-
-  "화면을 무작위로 분할하는 보로노이 다이어그램(Voronoi Diagram)을 구현하되,
-   각 셀(Cell)들이 파스텔 톤의 그라데이션 색상을 가지며 마우스 커서가 움직일 때마다
-   셀의 중심점들이 밀려나면서 전체 기하학적 구조가 물 흐르듯 부드럽게 재배치되는
-   힐링 되는 인터랙티브 아트를 만들어줘.
-   Implementation Advice: Use WebGL Shader for pixel-perfect smooth Voronoi
-   (calculating distance to nearest point per pixel is fast on GPU).
-   Alternatively, for SVGs/Canvas, use a library like d3-delaunay but it might
-   be slower with high point counts. 모든 의존관계의 코드를 하나의 HTML에 담는
-   형태로 코드 작성."
-
-  자세한 내용은 README.md 참조.
--->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>interactive-voronoi</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>🌸 interactive-voronoi</title>
+  <style>
+    /* Dark navy/violet radial backdrop. WebGL paints cells with u_bgColor sampled
+       from this gradient so cell borders blend smoothly into the body. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #ddd6fe;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: radial-gradient(ellipse at center, #1a1145 0%, #0a0628 60%, #04021a 100%);
+      /* Slow ambient pulse — keeps the gradient from feeling dead-flat. */
+      animation: breathe 16s ease-in-out infinite alternate;
+    }
+    @keyframes breathe {
+      0%   { filter: hue-rotate(0deg)  brightness(1.00); }
+      100% { filter: hue-rotate(6deg)  brightness(1.05); }
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      touch-action: none;
+      /* No background — transparent canvas. Cells show body gradient through their borders
+         because the shader mixes u_bgColor into edges. */
+    }
+
+    /* HUD pill — top-left FPS / count / paused indicator. */
+    #hud {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      background: rgba(10, 8, 30, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: 12px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #ddd6fe;
+      user-select: none;
+      pointer-events: none;
+      z-index: 10;
+      letter-spacing: 0.02em;
+      animation: hud-breathe 8s ease-in-out infinite;
+    }
+    @keyframes hud-breathe {
+      0%, 100% { background: rgba(10, 8, 30, 0.55); }
+      50%      { background: rgba(10, 8, 30, 0.42); }
+    }
+    #hud #pause { opacity: 0.85; }
+
+    /* Hint — bottom-right key legend. Smaller and quieter. */
+    #hint {
+      position: fixed;
+      bottom: 14px;
+      right: 14px;
+      background: rgba(10, 8, 30, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font: 11px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #c4b5fd;
+      user-select: none;
+      pointer-events: none;
+      z-index: 10;
+      letter-spacing: 0.02em;
+    }
+    #hint kbd {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font: 11px/1.4 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      color: #ede9fe;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    }
+
+    /* Centered error card — only shown when JS detects no WebGL context. */
+    #webgl-fallback {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 2, 26, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 100;
+      padding: 24px;
+    }
+    #webgl-fallback[hidden] { display: none; }
+    #webgl-fallback::before {
+      content: "";
+      position: absolute;
+      max-width: 360px;
+      padding: 18px 22px;
+      border-radius: 14px;
+      background: rgba(26, 17, 69, 0.6);
+      border: 1px solid rgba(196, 181, 253, 0.2);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    }
+    #webgl-fallback {
+      font: 13px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #ede9fe;
+      text-align: center;
+    }
+
+    noscript .fallback {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 6, 40, 0.85);
+      color: #ede9fe;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      z-index: 100;
+      padding: 24px;
+    }
+  </style>
 </head>
 <body>
-<p style="font-family:system-ui;text-align:center;margin-top:20vh">
-  🚧 Under construction. <a href="./README.md">README.md</a> 참조.
-</p>
+  <canvas id="stage"></canvas>
+  <div id="hud"><span id="fps">--</span> · <span id="count">40</span> cells<span id="pause" hidden> · paused</span></div>
+  <div id="hint">press <kbd>R</kbd> shuffle · <kbd>space</kbd> pause · <kbd>+</kbd>/<kbd>−</kbd> count</div>
+  <noscript><div class="fallback">JavaScript required.</div></noscript>
+  <div id="webgl-fallback" hidden>WebGL is required for this demo.</div>
+  <script>
+  (function () {
+    'use strict';
+
+    // ---------- 1. CONFIG (frozen) ----------
+    const CONFIG = Object.freeze({
+      POINT_COUNT:        40,
+      POINT_COUNT_MIN:    10,
+      POINT_COUNT_MAX:    120,
+      POINT_COUNT_STEP:   5,
+      POINT_SPEED:        0.3,    // px/frame velocity cap (CSS px)
+      SPRING_STIFFNESS:   0.05,
+      SPRING_DAMPING:     0.92,
+      MOUSE_RADIUS:       200,    // CSS px
+      MOUSE_FORCE:        80,
+      PASTEL_SATURATION:  0.30,
+      PASTEL_LIGHTNESS:   0.85,
+      EDGE_SMOOTH:        2.0,
+      AUTO_DRIFT:         0.15,   // random walk per frame on velocity (px)
+      TARGET_WANDER:      0.04,   // random walk per frame on target (px)
+      MAX_DPR:            2,
+      RNG_SEED_DEFAULT:   0xC0FFEE,
+    });
+
+    // GLSL ES 1.00 forbids runtime-indexed loop bounds, so the array length
+    // is baked in as a #define and the shader iterates up to POINT_COUNT_MAX.
+    // POINT_COUNT_MAX must match the JS-side typed array allocations exactly.
+    const POINT_COUNT_MAX = CONFIG.POINT_COUNT_MAX;
+
+    // ---------- 2. RNG — Mulberry32 (deterministic, fast, 32-bit state) ----------
+    function makeRng(seed) {
+      let s = (seed >>> 0) || 1;
+      function nextFloat() {
+        s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+      return {
+        nextFloat,
+        reseed(newSeed) { s = (newSeed >>> 0) || 1; },
+      };
+    }
+    let rng = makeRng(CONFIG.RNG_SEED_DEFAULT);
+
+    // ---------- 3. Color helpers ----------
+    // HSL → RGB. h in degrees [0..360), s,l in [0..1]. Returns [r,g,b] in [0..1].
+    function hslToRgb(h, s, l) {
+      h = ((h % 360) + 360) % 360 / 360;  // normalize to 0..1
+      let r, g, b;
+      if (s === 0) {
+        r = g = b = l;
+      } else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+      }
+      return [r, g, b];
+    }
+
+    // Pick a pastel hue in degrees. Uses the current RNG.
+    function pastelHue() { return rng.nextFloat() * 360; }
+
+    // ---------- 4. GLSL sources ----------
+    const VERT_SRC = [
+      'attribute vec2 a_position;',
+      'varying vec2 v_uv;',
+      'void main() {',
+      '  v_uv = a_position * 0.5 + 0.5;',
+      '  gl_Position = vec4(a_position, 0.0, 1.0);',
+      '}',
+    ].join('\n');
+
+    // NOTE: u_points[] and u_colors[] are sized to POINT_COUNT_MAX so the
+    // static-index loop is GLSL ES 1.00 compliant. JS must keep uploading
+    // exactly POINT_COUNT_MAX * stride floats (extra slots are padded to 0).
+    const FRAG_SRC = [
+      'precision highp float;',
+      '',
+      '#define POINT_COUNT_MAX ' + POINT_COUNT_MAX,
+      '',
+      'uniform vec2  u_resolution;',
+      'uniform vec2  u_points[POINT_COUNT_MAX];',
+      'uniform vec3  u_colors[POINT_COUNT_MAX];',
+      'uniform int   u_pointCount;',
+      'uniform vec2  u_mouse;',
+      'uniform float u_time;',
+      'uniform float u_paused;',
+      'uniform vec3  u_bgColor;',
+      '',
+      'varying vec2 v_uv;',
+      '',
+      'void main() {',
+      '  vec2 uv = v_uv * u_resolution;',
+      '',
+      '  vec3  nearestColor = vec3(0.0);',
+      '  float F1 = 1e10;',
+      '  float F2 = 1e10;',
+      '',
+      '  for (int i = 0; i < POINT_COUNT_MAX; i++) {',
+      '    if (i >= u_pointCount) break;',
+      '    vec2  p = u_points[i];',
+      '    float d = distance(uv, p);',
+      '    if (d < F1) { F2 = F1; F1 = d; nearestColor = u_colors[i]; }',
+      '    else if (d < F2) { F2 = d; }',
+      '  }',
+      '',
+      '  float edge = smoothstep(0.0, 2.0, F2 - F1);',
+      '  float gradient = 1.0 - smoothstep(0.0, 90.0, F1);',
+      '  vec3  cellShade = nearestColor * mix(0.78, 1.0, gradient);',
+      '',
+      '  vec3 outColor = mix(u_bgColor, cellShade, edge);',
+      '  gl_FragColor  = vec4(outColor, 1.0);',
+      '}',
+    ].join('\n');
+
+    // ---------- 5. Module-level state ----------
+    let canvas = null;
+    let gl = null;
+    let program = null;
+    let locations = null;
+    let points = [];
+    const mouse = { x: -1e6, y: -1e6 };
+    let paused = false;
+    let lastT = 0;
+    let t = 0;          // accumulated scene time in seconds
+    const fpsBuf = [];
+    let fpsAvg = 0;
+    let seedSalt = 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.MAX_DPR);
+    let pendingResize = false;
+
+    // Pre-allocated uniform upload buffers — sized to POINT_COUNT_MAX so we never
+    // allocate per frame. Extra slots are zero-padded (shader skips via u_pointCount).
+    const pointsBuf = new Float32Array(POINT_COUNT_MAX * 2);
+    const colorsBuf = new Float32Array(POINT_COUNT_MAX * 3);
+
+    // Background color sampled from the body radial-gradient. Falls back to the
+    // inner stop (#1a1145) which dominates the central viewport anyway.
+    // r=26 g=17 b=69 → 26/255, 17/255, 69/255
+    const BG_COLOR = [26 / 255, 17 / 255, 69 / 255];
+
+    // ---------- 6. Shader compile / link ----------
+    function showFatal(msg) {
+      console.error(msg);
+      const el = document.getElementById('webgl-fallback');
+      if (el) {
+        el.textContent = msg;
+        el.removeAttribute('hidden');
+      }
+    }
+
+    function compile(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        showFatal('Shader compile failed: ' + gl.getShaderInfoLog(sh));
+        gl.deleteShader(sh);
+        return null;
+      }
+      return sh;
+    }
+
+    function link(vs, fs) {
+      const p = gl.createProgram();
+      gl.attachShader(p, vs);
+      gl.attachShader(p, fs);
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        showFatal('Program link failed: ' + gl.getProgramInfoLog(p));
+        gl.deleteProgram(p);
+        return null;
+      }
+      return p;
+    }
+
+    // ---------- 7. WebGL init ----------
+    function initWebGL() {
+      canvas = document.getElementById('stage');
+      let ctx = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: false });
+      if (!ctx) ctx = canvas.getContext('experimental-webgl', { antialias: true, premultipliedAlpha: false });
+      gl = ctx;
+      if (!gl) return null;
+
+      gl.clearColor(0, 0, 0, 1);
+
+      const vs = compile(gl.VERTEX_SHADER, VERT_SRC);
+      const fs = compile(gl.FRAGMENT_SHADER, FRAG_SRC);
+      if (!vs || !fs) return null;
+
+      program = link(vs, fs);
+      if (!program) return null;
+      gl.useProgram(program);
+
+      locations = {
+        resolution: gl.getUniformLocation(program, 'u_resolution'),
+        points:     gl.getUniformLocation(program, 'u_points'),
+        colors:     gl.getUniformLocation(program, 'u_colors'),
+        pointCount: gl.getUniformLocation(program, 'u_pointCount'),
+        mouse:      gl.getUniformLocation(program, 'u_mouse'),
+        time:       gl.getUniformLocation(program, 'u_time'),
+        paused:     gl.getUniformLocation(program, 'u_paused'),
+        bgColor:    gl.getUniformLocation(program, 'u_bgColor'),
+      };
+
+      // Fullscreen quad as TRIANGLE_STRIP — 4 verts, no indices.
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1,  1, -1,  -1, 1,  1, 1]),
+        gl.STATIC_DRAW);
+
+      const aPos = gl.getAttribLocation(program, 'a_position');
+      if (aPos < 0) {
+        showFatal('Attribute a_position not found in shader.');
+        return null;
+      }
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      return gl;
+    }
+
+    // ---------- 8. Point factory ----------
+    function makePoints(n) {
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const arr = [];
+      for (let i = 0; i < n; i++) {
+        const x = rng.nextFloat() * W;
+        const y = rng.nextFloat() * H;
+        arr.push({
+          x: x, y: y,
+          vx: 0, vy: 0,
+          tx: x, ty: y,
+          hue: pastelHue(),
+        });
+      }
+      return arr;
+    }
+
+    // ---------- 9. Randomize all ----------
+    function randomizeAll() {
+      // Deterministic reseed so each shuffle yields a reproducible layout,
+      // but salt increments every press so layouts actually differ.
+      seedSalt = (seedSalt + 1) >>> 0;
+      rng.reseed((CONFIG.RNG_SEED_DEFAULT + seedSalt * 0x9E3779B1) >>> 0);
+
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        p.x = rng.nextFloat() * W;
+        p.y = rng.nextFloat() * H;
+        p.vx = 0;
+        p.vy = 0;
+        p.tx = p.x;
+        p.ty = p.y;
+        p.hue = pastelHue();
+      }
+    }
+
+    // ---------- 10. Adjust point count ----------
+    function setPointCount(n) {
+      // Clamp to [MIN, MAX], then snap to the nearest multiple of STEP so the
+      // +/- keys produce predictable jumps.
+      n = Math.max(CONFIG.POINT_COUNT_MIN, Math.min(CONFIG.POINT_COUNT_MAX, n));
+      n = Math.round(n / CONFIG.POINT_COUNT_STEP) * CONFIG.POINT_COUNT_STEP;
+
+      if (n > points.length) {
+        // Append — existing points keep their order, position, and velocity.
+        const cx = window.innerWidth  * 0.5;
+        const cy = window.innerHeight * 0.5;
+        const spread = Math.min(window.innerWidth, window.innerHeight) * 0.25;
+        for (let i = points.length; i < n; i++) {
+          const x = cx + (rng.nextFloat() - 0.5) * spread;
+          const y = cy + (rng.nextFloat() - 0.5) * spread;
+          points.push({
+            x: x, y: y,
+            vx: 0, vy: 0,
+            tx: x, ty: y,
+            hue: pastelHue(),
+          });
+        }
+      } else if (n < points.length) {
+        // Truncate — preserves order of first n points.
+        points.length = n;
+      }
+    }
+
+    // ---------- 11. Resize ----------
+    function resize() {
+      const W = Math.floor(window.innerWidth  * dpr);
+      const H = Math.floor(window.innerHeight * dpr);
+      canvas.width  = W;
+      canvas.height = H;
+      canvas.style.width  = window.innerWidth  + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      if (gl) gl.viewport(0, 0, W, H);
+    }
+
+    // ---------- 12. Simulation step (skipped while paused) ----------
+    function step() {
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const mouseActive = mouse.x > -1e5;
+      const drift = CONFIG.AUTO_DRIFT;
+      const wander = CONFIG.TARGET_WANDER * 2;  // ±wander per axis per frame
+      const r2 = CONFIG.MOUSE_RADIUS * CONFIG.MOUSE_RADIUS;
+      const speedCap = CONFIG.POINT_SPEED;
+      const speedCap2 = speedCap * speedCap;
+      const k = CONFIG.SPRING_STIFFNESS;
+      const damp = CONFIG.SPRING_DAMPING;
+
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+
+        // 1. Auto-drift: small random kicks on velocity for ambient motion.
+        p.vx += (rng.nextFloat() - 0.5) * drift;
+        p.vy += (rng.nextFloat() - 0.5) * drift;
+
+        // 2. Mouse-push: set target away from cursor (only if mouse is on-screen).
+        if (mouseActive) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < r2 && d2 > 1e-3) {
+            const d = Math.sqrt(d2);
+            const falloff = 1 - d / CONFIG.MOUSE_RADIUS;
+            const push = CONFIG.MOUSE_FORCE * falloff;
+            p.tx = p.x + (dx / d) * push;
+            p.ty = p.y + (dy / d) * push;
+          }
+        }
+
+        // 3. Target wander: gentle random walk so the resting layout keeps evolving.
+        p.tx += (rng.nextFloat() - 0.5) * wander;
+        p.ty += (rng.nextFloat() - 0.5) * wander;
+
+        // 4. Spring step toward target (Hooke + damping).
+        const fx = (p.tx - p.x) * k;
+        const fy = (p.ty - p.y) * k;
+        p.vx = (p.vx + fx) * damp;
+        p.vy = (p.vy + fy) * damp;
+
+        // 5. Speed cap (per-frame px ceiling).
+        const sp2 = p.vx * p.vx + p.vy * p.vy;
+        if (sp2 > speedCap2) {
+          const s = speedCap / Math.sqrt(sp2);
+          p.vx *= s;
+          p.vy *= s;
+        }
+
+        // Integrate.
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // 6. Target re-roll when reached — pick a fresh resting spot so the
+        //    point never sits idle forever. Threshold ~2 px from target.
+        const tdx = p.tx - p.x;
+        const tdy = p.ty - p.y;
+        if (tdx * tdx + tdy * tdy < 4) {
+          p.tx = rng.nextFloat() * W;
+          p.ty = rng.nextFloat() * H;
+        }
+
+        // NaN safety — never let a point escape to infinity.
+        if (!Number.isFinite(p.x))  p.x  = W * 0.5;
+        if (!Number.isFinite(p.y))  p.y  = H * 0.5;
+        if (!Number.isFinite(p.vx)) p.vx = 0;
+        if (!Number.isFinite(p.vy)) p.vy = 0;
+
+        // Soft-bounce clamp inside viewport. Reverses and halves velocity on hit.
+        if (p.x < 0)        { p.x = 0;  p.vx *= -0.5; }
+        else if (p.x > W)   { p.x = W;  p.vx *= -0.5; }
+        if (p.y < 0)        { p.y = 0;  p.vy *= -0.5; }
+        else if (p.y > H)   { p.y = H;  p.vy *= -0.5; }
+      }
+    }
+
+    // ---------- 13. Render ----------
+    function render() {
+      if (!gl || !program) return;
+
+      gl.useProgram(program);
+
+      const W = canvas.width;
+      const H = canvas.height;
+      gl.uniform2f(locations.resolution, W, H);
+      gl.uniform1i(locations.pointCount, points.length);
+      gl.uniform1f(locations.time, t);
+      gl.uniform1f(locations.paused, paused ? 1.0 : 0.0);
+      // Mouse and points live in device-pixel space so they share u_resolution's frame.
+      gl.uniform2f(locations.mouse, mouse.x * dpr, mouse.y * dpr);
+      gl.uniform3f(locations.bgColor, BG_COLOR[0], BG_COLOR[1], BG_COLOR[2]);
+
+      const n = points.length;
+      // Pack positions and per-point pastel colors into pre-allocated buffers.
+      // Cached RGB on the point avoids re-converting every frame.
+      for (let i = 0; i < n; i++) {
+        const p = points[i];
+        pointsBuf[i * 2]     = p.x * dpr;
+        pointsBuf[i * 2 + 1] = p.y * dpr;
+        if (!p._rgb) p._rgb = hslToRgb(p.hue, CONFIG.PASTEL_SATURATION, CONFIG.PASTEL_LIGHTNESS);
+        colorsBuf[i * 3]     = p._rgb[0];
+        colorsBuf[i * 3 + 1] = p._rgb[1];
+        colorsBuf[i * 3 + 2] = p._rgb[2];
+      }
+      // Zero-pad the unused tail so the shader sees clean values (loop break on
+      // u_pointCount handles correctness, but stale data is wasteful).
+      for (let i = n; i < POINT_COUNT_MAX; i++) {
+        pointsBuf[i * 2] = 0; pointsBuf[i * 2 + 1] = 0;
+        colorsBuf[i * 3] = 0; colorsBuf[i * 3 + 1] = 0; colorsBuf[i * 3 + 2] = 0;
+      }
+      gl.uniform2fv(locations.points, pointsBuf);
+      gl.uniform3fv(locations.colors, colorsBuf);
+
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    // ---------- 14. Frame loop ----------
+    let hudLastUpdate = 0;
+    function updateHud(now) {
+      if (now - hudLastUpdate < 250) return;
+      hudLastUpdate = now;
+      const fpsEl = document.getElementById('fps');
+      const countEl = document.getElementById('count');
+      const pauseEl = document.getElementById('pause');
+      if (fpsEl)   fpsEl.textContent   = (fpsAvg > 0 ? Math.round(1 / fpsAvg).toString() : '--');
+      if (countEl) countEl.textContent = points.length.toString();
+      if (pauseEl) {
+        if (paused) pauseEl.removeAttribute('hidden');
+        else        pauseEl.setAttribute('hidden', '');
+      }
+    }
+
+    function frame(now) {
+      // dt clamped to 50 ms so a long tab-suspend doesn't dump physics forward.
+      const dt = Math.min((now - lastT) / 1000, 0.05);
+      lastT = now;
+      t += dt;
+
+      // Rolling FPS over the last 30 frames — averaged.
+      fpsBuf.push(dt);
+      if (fpsBuf.length > 30) fpsBuf.shift();
+      let sum = 0;
+      for (let i = 0; i < fpsBuf.length; i++) sum += fpsBuf[i];
+      fpsAvg = fpsBuf.length > 0 ? sum / fpsBuf.length : 0;
+
+      if (pendingResize) {
+        resize();
+        pendingResize = false;
+      }
+
+      if (!paused) step();
+      render();
+      updateHud(now);
+
+      requestAnimationFrame(frame);
+    }
+
+    // ---------- 15. Event handlers ----------
+    function onPointerMove(ev) {
+      mouse.x = ev.clientX;
+      mouse.y = ev.clientY;
+    }
+    function onPointerAway() {
+      mouse.x = -1e6;
+      mouse.y = -1e6;
+    }
+    function onKeyDown(ev) {
+      const k = ev.key;
+      if (k === ' ' || ev.code === 'Space') {
+        paused = !paused;
+        ev.preventDefault();
+      } else if (k === 'r' || k === 'R') {
+        randomizeAll();
+      } else if (k === '+' || k === '=') {
+        setPointCount(points.length + CONFIG.POINT_COUNT_STEP);
+      } else if (k === '-' || k === '_') {
+        setPointCount(points.length - CONFIG.POINT_COUNT_STEP);
+      }
+    }
+    function onResize() {
+      // RAF-coalesced — frame() processes the pending flag exactly once.
+      pendingResize = true;
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        // Reset lastT so the first dt after resume isn't a multi-second spike.
+        lastT = performance.now();
+      }
+    }
+
+    // ---------- 16 + 17. Boot ----------
+    function boot() {
+      gl = initWebGL();
+      if (!gl) {
+        // initWebGL already surfaced a fatal message; just stop.
+        return;
+      }
+
+      points = makePoints(CONFIG.POINT_COUNT);
+
+      // Double-RAF so resize() runs in the correct frame context (DPR stable,
+      // layout settled) before frame() starts reading canvas dimensions.
+      requestAnimationFrame(() => {
+        resize();
+        requestAnimationFrame(frame);
+      });
+
+      window.addEventListener('pointermove',  onPointerMove, { passive: true });
+      window.addEventListener('pointerleave', onPointerAway, { passive: true });
+      window.addEventListener('pointercancel', onPointerAway, { passive: true });
+      window.addEventListener('pointerout',   onPointerAway, { passive: true });
+      window.addEventListener('keydown',      onKeyDown);
+      window.addEventListener('resize',       onResize);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+
+      // Prime HUD with initial values so it isn't blank for the first 250 ms.
+      document.getElementById('count').textContent = points.length.toString();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+      boot();
+    }
+  })();
+  </script>
 </body>
 </html>
