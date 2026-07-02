@@ -10,12 +10,12 @@ A **Voronoi Diagram** that randomly partitions the screen, where each **cell** c
 
 ## 🎬 Live Demo
 
-> **👉 https://interactive-voronoi.vercel.app/** — Open in browser (60fps, WebGL)
+> **👉 [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/)** — Open in browser (60fps, WebGL)
 
 | | |
 |---|---|
 | ![Demo](https://img.shields.io/badge/Live-Demo-7C3AED?style=for-the-badge&logo=vercel&logoColor=white) | [![Repo](https://img.shields.io/badge/GitHub-sigco3111%2Finteractive--voronoi-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sigco3111/interactive-voronoi) |
-| ![Status](https://img.shields.io/badge/Status-In%20Development-F59E0B?style=flat-square) | ![Stack](https://img.shields.io/badge/Stack-WebGL%20Shader-000000?style=flat-square) |
+| ![Status](https://img.shields.io/badge/Status-Live-22C55E?style=flat-square) | ![Stack](https://img.shields.io/badge/Stack-WebGL%20Shader-000000?style=flat-square) |
 | ![License](https://img.shields.io/badge/License-MIT-F1C40F?style=flat-square) | ![Deps](https://img.shields.io/badge/Dependencies-0-9CA3AF?style=flat-square) |
 
 ### 🎮 Quick Usage
@@ -36,6 +36,7 @@ This project's code is **automatically generated** using the model and prompt be
 | **Model** | MiniMax-M3 |
 | **Runtime** | OpenCode CLI |
 | **Repository** | [`sigco3111/interactive-voronoi`](https://github.com/sigco3111/interactive-voronoi) |
+| **Live** | [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/) |
 | **License** | MIT |
 | **Dependencies** | None (WebGL GLSL Shader, single HTML file) |
 
@@ -127,20 +128,21 @@ JS-side updates `u_points[]` uniform every frame with mouse-interpolated coordin
 
 ## 🚀 Quick Start
 
-### Method 1: Just open in browser
+### Method 1: Live demo (easiest)
+Click the [🎬 Live Demo](https://interactive-voronoi.vercel.app/) link above.
+
+### Method 2: Just open in browser
 ```bash
 open index.html        # macOS
 xdg-open index.html    # Linux
 start index.html       # Windows
 ```
 
-### Method 2: Local server (recommended)
+### Method 3: Local server (recommended)
 ```bash
 python3 -m http.server 8000
 # → http://localhost:8000
 ```
-
-> ⚠️ WebGL works under local `file://` but some browsers restrict by security policy; local server recommended.
 
 ---
 
@@ -160,8 +162,8 @@ python3 -m http.server 8000
 
 | Area | Technology |
 |---|---|
-| **Rendering** | WebGL 1.0 / 2.0 Fragment Shader (GLSL) |
-| **Distance calc** | Per-pixel nearest-point search (shader loop) |
+| **Rendering** | WebGL Fragment Shader (GLSL) |
+| **Distance calc** | Per-pixel nearest-point search (`gl_FragColor` loop) |
 | **Physics** | Spring/damping system (JS-side point position update) |
 | **Color** | HSL pastel palette (low saturation, high lightness) |
 | **Mouse** | `pointermove` event → uniform `u_mouse` update |
@@ -221,19 +223,6 @@ const CONFIG = {
 - **Instant jump**: jarring, unnatural
 - **Linear interpolation**: smooth but lacks physical feel
 - **Spring/damping**: natural vibration → stable (recommended)
-
----
-
-## 🗺️ Roadmap
-
-- [x] **v0.0** — Repository + README scaffolding
-- [ ] **v0.1** — Single HTML MVP: WebGL Voronoi + pastel colors + static points
-- [ ] **v0.2** — Mouse disturbance + spring/damping interpolation
-- [ ] **v0.3** — Auto drift (perlin noise)
-- [ ] **v0.4** — Vercel deploy + live demo
-- [ ] **v0.5** — Sound integration (healing ambient tone)
-- [ ] **v0.6** — Record & replay (MP4 / WebM capture)
-- [ ] **v1.0** — Playwright E2E (Canvas pixel variance verification)
 
 ---
 
