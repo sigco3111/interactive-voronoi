@@ -10,7 +10,7 @@
 
 ## 🎬 라이브 데모 (Live Demo)
 
-> **👉 [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/)** — 브라우저에서 바로 실행 (60fps, WebGL)
+> **👉 [https://sigco3111.github.io/interactive-voronoi/](https://sigco3111.github.io/interactive-voronoi/)** — 브라우저에서 바로 실행 (60fps, WebGL)
 
 | | |
 |---|---|
@@ -36,7 +36,7 @@
 | **모델** | MiniMax-M3 |
 | **실행 환경** | OpenCode CLI |
 | **저장소** | [`sigco3111/interactive-voronoi`](https://github.com/sigco3111/interactive-voronoi) |
-| **라이브** | [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/) |
+| **라이브** | [https://sigco3111.github.io/interactive-voronoi/](https://sigco3111.github.io/interactive-voronoi/) |
 | **라이선스** | MIT |
 | **의존성** | 없음 (WebGL GLSL Shader, 단일 HTML) |
 
@@ -127,7 +127,7 @@ CPU JS 측에서 매 프레임 `u_points[]` uniform을 마우스 위치에 따�
 ## 🚀 실행 방법 (Quick Start)
 
 ### 방법 1: 라이브 데모 (가장 간단)
-위 [🎬 라이브 데모](https://interactive-voronoi.vercel.app/) 링크 클릭 → 즉시 실행
+위 [🎬 라이브 데모](https://sigco3111.github.io/interactive-voronoi/) 링크 클릭 → 즉시 실행
 
 ### 방법 2: 그냥 브라우저로 열기
 ```bash
