@@ -10,11 +10,11 @@ A **Voronoi Diagram** that randomly partitions the screen, where each **cell** c
 
 ## 🎬 Live Demo
 
-> **👉 [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/)** — Open in browser (60fps, WebGL)
+> **👉 [https://sigco3111.github.io/interactive-voronoi/](https://sigco3111.github.io/interactive-voronoi/)** — Open in browser (60fps, WebGL)
 
 | | |
 |---|---|
-| ![Demo](https://img.shields.io/badge/Live-Demo-7C3AED?style=for-the-badge&logo=vercel&logoColor=white) | [![Repo](https://img.shields.io/badge/GitHub-sigco3111%2Finteractive--voronoi-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sigco3111/interactive-voronoi) |
+| ![Demo](https://img.shields.io/badge/Live-Demo-222222?style=for-the-badge&logo=githubpages&logoColor=white) | [![Repo](https://img.shields.io/badge/GitHub-sigco3111%2Finteractive--voronoi-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sigco3111/interactive-voronoi) |
 | ![Status](https://img.shields.io/badge/Status-Live-22C55E?style=flat-square) | ![Stack](https://img.shields.io/badge/Stack-WebGL%20Shader-000000?style=flat-square) |
 | ![License](https://img.shields.io/badge/License-MIT-F1C40F?style=flat-square) | ![Deps](https://img.shields.io/badge/Dependencies-0-9CA3AF?style=flat-square) |
 
@@ -36,7 +36,7 @@ This project's code is **automatically generated** using the model and prompt be
 | **Model** | MiniMax-M3 |
 | **Runtime** | OpenCode CLI |
 | **Repository** | [`sigco3111/interactive-voronoi`](https://github.com/sigco3111/interactive-voronoi) |
-| **Live** | [https://interactive-voronoi.vercel.app/](https://interactive-voronoi.vercel.app/) |
+| **Live** | [https://sigco3111.github.io/interactive-voronoi/](https://sigco3111.github.io/interactive-voronoi/) |
 | **License** | MIT |
 | **Dependencies** | None (WebGL GLSL Shader, single HTML file) |
 
@@ -129,7 +129,7 @@ JS-side updates `u_points[]` uniform every frame with mouse-interpolated coordin
 ## 🚀 Quick Start
 
 ### Method 1: Live demo (easiest)
-Click the [🎬 Live Demo](https://interactive-voronoi.vercel.app/) link above.
+Click the [🎬 Live Demo](https://sigco3111.github.io/interactive-voronoi/) link above.
 
 ### Method 2: Just open in browser
 ```bash
